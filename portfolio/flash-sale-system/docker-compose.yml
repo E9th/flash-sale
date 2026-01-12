@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # --- Infrastructure (ของเดิม) ---
+  postgres:
+    image: postgres:15-alpine
+    container_name: flash_postgres
+    ports:
+      - "5433:5432" # Map 5433 -> 5432
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: flashsale_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: flash_redis
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: flash_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: password123
+
+  # --- Application (ของใหม่!) ---
+  
+  # 1. API Server (รัน 3 ตัวช่วยกันทำงาน)
+  api:
+    build: .
+    command: ./main-api  # รันตัว API
+    deploy:
+      replicas: 3        # <--- เสกมา 3 ร่าง!
+    restart: always
+    environment:
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
+      - RABBITMQ_HOST=rabbitmq
+      - PORT=8080
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+
+  # 2. Background Worker (รัน 1 ตัวคอยเก็บกวาด)
+  worker:
+    build: .
+    command: ./main-worker # รันตัว Worker
+    restart: always
+    environment:
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
+      - RABBITMQ_HOST=rabbitmq
+    depends_on:
+      - rabbitmq
+      - postgres
+
+  # 3. Load Balancer (ด่านหน้า)
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80" # เข้าผ่าน Port 80 ได้เลย
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚡ Flash Sale Live Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4">
+
+    <h1 class="text-4xl font-bold mb-8 text-yellow-400">⚡ Flash Sale Monitor</h1>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
+        <div class="bg-gray-800 p-6 rounded-2xl shadow-lg flex flex-col items-center text-center border border-gray-700">
+            <img src="https://store.storeimages.cdn-apple.com/8756/as-images.apple.com/is/iphone-15-pro-max-natural-titanium-select-202309?wid=5120&hei=2880&fmt=p-jpg&qlt=80&.v=1694075526955" 
+                 class="w-48 h-auto mb-4 drop-shadow-lg transform hover:scale-105 transition duration-300">
+            <h2 class="text-2xl font-semibold">iPhone 15 Pro Max</h2>
+            <div class="mt-4">
+                <span class="text-gray-400 text-sm">Remaining Stock</span>
+                <div id="stock-display" class="text-6xl font-mono font-bold text-green-400 mt-2">100</div>
+            </div>
+        </div>
+
+        <div class="bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700">
+            <h3 class="text-xl font-semibold mb-4 text-gray-300">Live Orders Trend</h3>
+            <canvas id="orderChart"></canvas>
+        </div>
+    </div>
+
+    <div id="status" class="mt-8 text-gray-500 text-sm">Waiting for connection...</div>
+
+    <script>
+        const stockDisplay = document.getElementById('stock-display');
+        const statusDisplay = document.getElementById('status');
+        let currentStock = 100;
+
+        // --- Chart.js Setup ---
+        const ctx = document.getElementById('orderChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array(20).fill(''), // แกน X ว่างๆ
+                datasets: [{
+                    label: 'Stock Level',
+                    data: Array(20).fill(100),
+                    borderColor: '#4ade80',
+                    backgroundColor: 'rgba(74, 222, 128, 0.2)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                animation: false, // ปิด Animation เพื่อความลื่นไหลเวลารับค่ารัวๆ
+                scales: {
+                    y: { beginAtZero: true, max: 120 }
+                }
+            }
+        });
+
+        // --- WebSocket Setup ---
+        // ต่อไปที่ NGINX (Port 80) Path /ws
+        const ws = new WebSocket("ws://" + window.location.host + "/ws");
+
+        ws.onopen = () => {
+            statusDisplay.innerText = "🟢 Connected to Real-time Stream";
+            statusDisplay.className = "mt-8 text-green-500 text-sm font-bold";
+        };
+
+        ws.onmessage = (event) => {
+            // รับข้อมูล JSON: {"product_id": 1, "stock": 98}
+            const data = JSON.parse(event.data);
+            
+            // 1. อัปเดตตัวเลข
+            currentStock = data.stock;
+            stockDisplay.innerText = currentStock;
+
+            // เปลี่ยนสีตัวเลขถ้าของใกล้หมด
+            if (currentStock === 0) {
+                stockDisplay.className = "text-6xl font-mono font-bold text-red-500 mt-2";
+                stockDisplay.innerText = "SOLD OUT";
+            } else if (currentStock < 20) {
+                stockDisplay.className = "text-6xl font-mono font-bold text-yellow-400 mt-2";
+            }
+
+            // 2. อัปเดตกราฟ
+            const newLabel = new Date().toLocaleTimeString();
+            chart.data.labels.push(newLabel);
+            chart.data.labels.shift(); // เอาตัวเก่าออก
+            
+            chart.data.datasets[0].data.push(currentStock);
+            chart.data.datasets[0].data.shift(); // เอาตัวเก่าออก
+            
+            chart.update();
+        };
+
+        ws.onclose = () => {
+            statusDisplay.innerText = "🔴 Disconnected";
+            statusDisplay.className = "mt-8 text-red-500 text-sm font-bold";
+        };
+    </script>
+</body>
+</html>
