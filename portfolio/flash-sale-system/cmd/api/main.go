@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flash-sale-system/internal"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -48,6 +49,19 @@ func main() {
 			clientsMu.Unlock()
 			c.Close()
 		}()
+
+		// ✨ [เพิ่มตรงนี้] ส่งค่า Stock ปัจจุบันให้ Client ทันทีที่ต่อติด ✨
+		// 1. ดึงค่าจาก Redis
+		val, err := internal.RDB.Get(context.Background(), "product:1:stock").Result()
+		if err != nil {
+			val = "0" // ถ้าหาไม่เจอ หรือ Error ให้ตีว่าเป็น 0 ไปก่อน
+		}
+
+		// 2. ส่งข้อความไปหา Client คนนี้คนเดียว
+		initMsg := fmt.Sprintf(`{"product_id": 1, "stock": %s}`, val)
+		if err := c.WriteMessage(websocket.TextMessage, []byte(initMsg)); err != nil {
+			log.Println("Write error:", err)
+		}
 
 		for {
 			if _, _, err := c.ReadMessage(); err != nil {

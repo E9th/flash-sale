@@ -36,7 +36,7 @@
 
             <div class="mt-8 p-6 bg-white/50 backdrop-blur-xl rounded-2xl border border-white/60 shadow-sm w-full max-w-xs">
                 <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Available Stock</span>
-                <div id="stock-display" class="text-6xl font-medium tracking-tighter text-gray-900 mt-2 transition-colors duration-300">100</div>
+                <div id="stock-display" class="text-6xl font-mono font-bold text-green-400 mt-2">...</div>
             </div>
         </div>
 
@@ -55,7 +55,7 @@
     <script>
         const stockDisplay = document.getElementById('stock-display');
         const statusDisplay = document.getElementById('status');
-        let currentStock = 100;
+        let currentStock = 0;
 
         // --- Chart.js Setup ---
         Chart.defaults.font.family = "'Inter', sans-serif";
