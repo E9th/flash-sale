@@ -22,11 +22,29 @@ func ConnectRabbitMQ() {
 		host = "localhost"
 	}
 
-	var err error
-	// เชื่อมต่อ RabbitMQ (Default port 5672)
 	dsn := fmt.Sprintf("amqp://admin:password123@%s:5672/", host)
-	RabbitConn, err = amqp.Dial(dsn)
-	failOnError(err, "Failed to connect to RabbitMQ")
+	var err error
+
+	// --- 🔄 Retry Logic Start ---
+	counts := 0
+	for {
+		RabbitConn, err = amqp.Dial(dsn)
+		if err != nil {
+			fmt.Printf("RabbitMQ not ready... waiting (Attempt %d)\n", counts)
+			counts++
+		} else {
+			fmt.Println("✅ Connected to RabbitMQ!")
+			break // ต่อติดแล้ว ออกจาก Loop
+		}
+
+		if counts > 15 { // รอสูงสุด 30 วิ (15 * 2s)
+			log.Panicf("Failed to connect to RabbitMQ after retries: %s", err)
+		}
+
+		time.Sleep(2 * time.Second)
+		continue
+	}
+	// --- 🔄 Retry Logic End ---
 
 	RabbitCh, err = RabbitConn.Channel()
 	failOnError(err, "Failed to open a channel")
