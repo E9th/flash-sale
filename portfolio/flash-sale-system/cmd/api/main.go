@@ -2,16 +2,17 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flash-sale-system/internal"
 	"fmt"
-	"log"
 	"sync"
+	"time"
 
-	"github.com/gofiber/contrib/websocket" // <--- Library ใหม่
+	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 )
 
-// ตัวแปรเก็บรายชื่อคนที่ต่อ WebSocket เข้ามา (Clients)
+// ตัวแปรเก็บรายชื่อคนที่ต่อ WebSocket เข้ามา
 var (
 	clients   = make(map[*websocket.Conn]bool)
 	clientsMu sync.Mutex
@@ -24,13 +25,11 @@ func main() {
 	defer internal.RabbitConn.Close()
 	defer internal.RabbitCh.Close()
 
-	// (Phase 2 Code: seedStock() เอาไว้เหมือนเดิม)
 	seedStock()
 
 	app := fiber.New()
 
 	// --- 1. WebSocket Endpoint ---
-	// ต้องมี middleware เช็คก่อนว่าเป็นการเชื่อมต่อแบบ WS หรือไม่
 	app.Use("/ws", func(c *fiber.Ctx) error {
 		if websocket.IsWebSocketUpgrade(c) {
 			return c.Next()
@@ -39,23 +38,17 @@ func main() {
 	})
 
 	app.Get("/ws", websocket.New(func(c *websocket.Conn) {
-		// เมื่อมีคนต่อเข้ามา ให้เก็บ connection ไว้ใน map
 		clientsMu.Lock()
 		clients[c] = true
 		clientsMu.Unlock()
 
-		log.Println("🟢 New WebSocket Client Connected")
-
-		// รอจนกว่าเขาจะตัดสาย
 		defer func() {
 			clientsMu.Lock()
 			delete(clients, c)
 			clientsMu.Unlock()
 			c.Close()
-			log.Println("🔴 Client Disconnected")
 		}()
 
-		// Loop ฟังข้อความจาก Client (ถึงเราจะไม่ได้รับอะไร แต่ต้อง Loop ไว้ไม่งั้น Connection หลุด)
 		for {
 			if _, _, err := c.ReadMessage(); err != nil {
 				break
@@ -63,49 +56,88 @@ func main() {
 		}
 	}))
 
-	// --- 2. Background Task: ฟัง Redis แล้วกระจายข่าว (Broadcaster) ---
+	// --- 2. Background Task: ฟัง Redis แล้วกระจายข่าว ---
 	go func() {
 		ctx := context.Background()
-		// Subscribe ช่อง "stock_updates"
-		pubsub := internal.RDB.Subscribe(ctx, "stock_updates")
-		defer pubsub.Close()
+		// Retry Logic สำหรับ Subscribe (เผื่อ Redis ยังไม่ตื่น)
+		for {
+			pubsub := internal.RDB.Subscribe(ctx, "stock_updates")
+			ch := pubsub.Channel()
 
-		ch := pubsub.Channel()
-
-		// วนลูปรับข้อความจาก Redis
-		for msg := range ch {
-			// พอได้ข่าวมา ก็ส่งต่อให้ Clients ทุกคน
-			clientsMu.Lock()
-			for client := range clients {
-				if err := client.WriteMessage(websocket.TextMessage, []byte(msg.Payload)); err != nil {
-					client.Close()
-					delete(clients, client)
-				}
+			// Test connection
+			_, err := pubsub.Receive(ctx)
+			if err != nil {
+				fmt.Println("Redis PubSub not ready, retrying...")
+				time.Sleep(2 * time.Second)
+				continue
 			}
-			clientsMu.Unlock()
+
+			fmt.Println("🎧 API is listening to stock updates...")
+
+			for msg := range ch {
+				clientsMu.Lock()
+				for client := range clients {
+					if err := client.WriteMessage(websocket.TextMessage, []byte(msg.Payload)); err != nil {
+						client.Close()
+						delete(clients, client)
+					}
+				}
+				clientsMu.Unlock()
+			}
 		}
 	}()
 
-	// --- 3. Serve หน้า Dashboard (Frontend) ---
+	// --- 3. Serve Frontend ---
 	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendFile("index.html") // เดี๋ยวเราสร้างไฟล์นี้กัน
+		return c.SendFile("index.html")
 	})
 
-	// API Buy เดิม (เอาไว้เหมือนเดิม)
+	// --- 4. Logic ซื้อของ (เอาของเดิมกลับมาใส่!) ---
 	app.Post("/api/buy", func(c *fiber.Ctx) error {
-		// ... (Code เดิมทั้งหมดของ Phase 3/4) ...
-		// (Copy Code เดิมจาก Phase 3 มาใส่ตรงนี้ได้เลยครับ หรือถ้าไฟล์เดิมมีอยู่แล้วก็ไม่ต้องแก้ส่วนนี้)
-		return c.SendStatus(200) // Placeholder
-	})
+		type Request struct {
+			UserID    int `json:"user_id"`
+			ProductID int `json:"product_id"`
+		}
+		var req Request
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
+		}
 
-	// หมายเหตุ: อย่าลืม copy logic ของ /api/buy กลับมาใส่นะครับ เดี๋ยวซื้อไม่ได้ 😅
-	// หรือถ้าไม่อยากแก้เยอะ ให้แปะ Code WebSocket แทรกเข้าไประหว่าง app := fiber.New() กับ app.Post() ครับ
+		// 4.1 Redis Check
+		stockKey := fmt.Sprintf("product:%d:stock", req.ProductID)
+		remaining, err := internal.RDB.Decr(internal.Ctx, stockKey).Result()
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Redis error"})
+		}
+		if remaining < 0 {
+			return c.Status(400).JSON(fiber.Map{"error": "Sold out!"})
+		}
+
+		// 4.2 RabbitMQ Publish
+		orderData, _ := json.Marshal(map[string]interface{}{
+			"user_id":    req.UserID,
+			"product_id": req.ProductID,
+			"timestamp":  time.Now().Unix(),
+		})
+
+		err = internal.PublishToQueue(orderData)
+		if err != nil {
+			internal.RDB.Incr(internal.Ctx, stockKey) // คืนของ
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to queue order"})
+		}
+
+		// 4.3 Response (202 Accepted)
+		return c.Status(202).JSON(fiber.Map{
+			"message":         "Order received, processing in background",
+			"remaining_stock": remaining,
+			"status":          "queued",
+		})
+	})
 
 	app.Listen(":8080")
 }
 
 func seedStock() {
-	// (ใช้ code เดิมจาก Phase 2)
 	var product internal.Product
 	if err := internal.DB.First(&product, 1).Error; err != nil {
 		return

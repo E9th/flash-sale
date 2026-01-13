@@ -3,32 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>⚡ Flash Sale Live Monitor</title>
+    <title>Flash Sale Monitor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .apple-gradient {
+            background: radial-gradient(circle at center, #ffffff 0%, #f5f5f7 100%);
+        }
+    </style>
 </head>
-<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4">
+<body class="apple-gradient text-gray-900 flex flex-col items-center justify-center min-h-screen p-6 antialiased">
 
-    <h1 class="text-4xl font-bold mb-8 text-yellow-400">⚡ Flash Sale Monitor</h1>
+    <nav class="absolute top-0 w-full p-6 flex justify-between items-center max-w-6xl mx-auto">
+        <h1 class="text-xl font-medium tracking-tight text-gray-800">Flash Sale Monitor</h1>
+        <div id="status" class="text-xs font-medium px-3 py-1 rounded-full bg-gray-200 text-gray-500">Connecting...</div>
+    </nav>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
-        <div class="bg-gray-800 p-6 rounded-2xl shadow-lg flex flex-col items-center text-center border border-gray-700">
-            <img src="https://store.storeimages.cdn-apple.com/8756/as-images.apple.com/is/iphone-15-pro-max-natural-titanium-select-202309?wid=5120&hei=2880&fmt=p-jpg&qlt=80&.v=1694075526955" 
-                 class="w-48 h-auto mb-4 drop-shadow-lg transform hover:scale-105 transition duration-300">
-            <h2 class="text-2xl font-semibold">iPhone 15 Pro Max</h2>
-            <div class="mt-4">
-                <span class="text-gray-400 text-sm">Remaining Stock</span>
-                <div id="stock-display" class="text-6xl font-mono font-bold text-green-400 mt-2">100</div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 w-full max-w-5xl items-center">
+        <!-- Product Section -->
+        <div class="flex flex-col items-center text-center space-y-6">
+            <div class="relative group">
+                <img src="https://images.unsplash.com/photo-1695048133142-1a20484d2569?auto=format&fit=crop&q=80&w=600" 
+                     class="w-64 md:w-80 h-auto object-contain drop-shadow-2xl transition-transform duration-500 hover:scale-105 rounded-3xl">
+            </div>
+            
+            <div class="space-y-2">
+                <h2 class="text-4xl md:text-5xl font-semibold tracking-tight text-gray-900">iPhone 15 Pro</h2>
+                <p class="text-xl text-gray-500 font-light">Titanium. So strong. So light. So Pro.</p>
+            </div>
+
+            <div class="mt-8 p-6 bg-white/50 backdrop-blur-xl rounded-2xl border border-white/60 shadow-sm w-full max-w-xs">
+                <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Available Stock</span>
+                <div id="stock-display" class="text-6xl font-medium tracking-tighter text-gray-900 mt-2 transition-colors duration-300">100</div>
             </div>
         </div>
 
-        <div class="bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700">
-            <h3 class="text-xl font-semibold mb-4 text-gray-300">Live Orders Trend</h3>
-            <canvas id="orderChart"></canvas>
+        <!-- Analytics Section -->
+        <div class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-between h-[400px]">
+            <div class="mb-6">
+                <h3 class="text-lg font-medium text-gray-900">Live Activity</h3>
+                <p class="text-sm text-gray-500">Real-time inventory tracking</p>
+            </div>
+            <div class="flex-grow w-full relative">
+                <canvas id="orderChart"></canvas>
+            </div>
         </div>
     </div>
-
-    <div id="status" class="mt-8 text-gray-500 text-sm">Waiting for connection...</div>
 
     <script>
         const stockDisplay = document.getElementById('stock-display');
@@ -36,67 +58,97 @@
         let currentStock = 100;
 
         // --- Chart.js Setup ---
+        Chart.defaults.font.family = "'Inter', sans-serif";
+        Chart.defaults.color = '#9ca3af';
+        
         const ctx = document.getElementById('orderChart').getContext('2d');
         const chart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: Array(20).fill(''), // แกน X ว่างๆ
+                labels: Array(20).fill(''), 
                 datasets: [{
                     label: 'Stock Level',
                     data: Array(20).fill(100),
-                    borderColor: '#4ade80',
-                    backgroundColor: 'rgba(74, 222, 128, 0.2)',
+                    borderColor: '#0071e3', // Apple Blue
+                    backgroundColor: (context) => {
+                        const ctx = context.chart.ctx;
+                        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                        gradient.addColorStop(0, 'rgba(0, 113, 227, 0.2)');
+                        gradient.addColorStop(1, 'rgba(0, 113, 227, 0)');
+                        return gradient;
+                    },
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
                     fill: true,
                     tension: 0.4
                 }]
             },
             options: {
-                animation: false, // ปิด Animation เพื่อความลื่นไหลเวลารับค่ารัวๆ
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        padding: 12,
+                        cornerRadius: 8,
+                        titleFont: { size: 11 },
+                        bodyFont: { size: 12 }
+                    }
+                },
                 scales: {
-                    y: { beginAtZero: true, max: 120 }
+                    x: { grid: { display: false }, border: { display: false } },
+                    y: { 
+                        beginAtZero: true, 
+                        max: 120,
+                        grid: { color: '#f3f4f6', borderDash: [4, 4] },
+                        border: { display: false }
+                    }
                 }
             }
         });
 
         // --- WebSocket Setup ---
-        // ต่อไปที่ NGINX (Port 80) Path /ws
         const ws = new WebSocket("ws://" + window.location.host + "/ws");
 
         ws.onopen = () => {
-            statusDisplay.innerText = "🟢 Connected to Real-time Stream";
-            statusDisplay.className = "mt-8 text-green-500 text-sm font-bold";
+            statusDisplay.innerText = "Live Connected";
+            statusDisplay.className = "text-xs font-medium px-3 py-1 rounded-full bg-green-100 text-green-700 animate-pulse";
         };
 
         ws.onmessage = (event) => {
-            // รับข้อมูล JSON: {"product_id": 1, "stock": 98}
             const data = JSON.parse(event.data);
             
-            // 1. อัปเดตตัวเลข
+            // 1. Update Number
             currentStock = data.stock;
             stockDisplay.innerText = currentStock;
 
-            // เปลี่ยนสีตัวเลขถ้าของใกล้หมด
+            // Minimalist color changes
             if (currentStock === 0) {
-                stockDisplay.className = "text-6xl font-mono font-bold text-red-500 mt-2";
-                stockDisplay.innerText = "SOLD OUT";
+                stockDisplay.className = "text-6xl font-medium tracking-tighter text-red-600 mt-2";
+                stockDisplay.innerText = "Sold Out";
             } else if (currentStock < 20) {
-                stockDisplay.className = "text-6xl font-mono font-bold text-yellow-400 mt-2";
+                stockDisplay.className = "text-6xl font-medium tracking-tighter text-orange-500 mt-2";
+            } else {
+                stockDisplay.className = "text-6xl font-medium tracking-tighter text-gray-900 mt-2";
             }
 
-            // 2. อัปเดตกราฟ
-            const newLabel = new Date().toLocaleTimeString();
+            // 2. Update Graph
+            const newLabel = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             chart.data.labels.push(newLabel);
-            chart.data.labels.shift(); // เอาตัวเก่าออก
+            chart.data.labels.shift(); 
             
             chart.data.datasets[0].data.push(currentStock);
-            chart.data.datasets[0].data.shift(); // เอาตัวเก่าออก
+            chart.data.datasets[0].data.shift(); 
             
             chart.update();
         };
 
         ws.onclose = () => {
-            statusDisplay.innerText = "🔴 Disconnected";
-            statusDisplay.className = "mt-8 text-red-500 text-sm font-bold";
+            statusDisplay.innerText = "Disconnected";
+            statusDisplay.className = "text-xs font-medium px-3 py-1 rounded-full bg-red-100 text-red-600";
         };
     </script>
 </body>
